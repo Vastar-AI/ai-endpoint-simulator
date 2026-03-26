@@ -1,0 +1,18 @@
+binding:
+  port: 4545
+  host: 0.0.0.0
+source: file
+database:
+  url: http://clickhouse:8123
+  username: simulator_app
+  password: "your_password"
+redis:
+  url: redis://redis:6379
+  prefix: ai_simulator
+tracking:
+  enabled: false
+log_level: info
+channel_capacity: 1000
+semaphore_limit: 5000
+workers: 2
+cache_ttl: 60

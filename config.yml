@@ -1,0 +1,18 @@
+binding:
+  port: 4545
+  host: 0.0.0.0
+source: file # file or database
+database:
+  url: http://127.0.0.1:8123
+  username: simulator_app
+  password: "your_password"
+redis:
+  url: redis://127.0.0.1:6379
+  prefix: ai_simulator
+tracking:
+  enabled: false
+log_level: info
+channel_capacity: 1000
+semaphore_limit: 10000
+workers: 4
+cache_ttl: 60

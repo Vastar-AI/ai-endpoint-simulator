@@ -1,0 +1,9 @@
+/target/
+*.swp
+*.swo
+*~
+.DS_Store
+.env
+cosign.key
+build_and_sign.sh
+cosign.pub

@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-sim-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+
+  ai-sim-01:
+    build: .
+    environment:
+      RUST_LOG: info
+    volumes:
+      - ./zresponse:/app/zresponse
+      - ./config.docker.yml:/app/config.yml
+    networks:
+      - ai-sim-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  ai-sim-02:
+    build: .
+    environment:
+      RUST_LOG: info
+    volumes:
+      - ./zresponse:/app/zresponse
+      - ./config.docker.yml:/app/config.yml
+    networks:
+      - ai-sim-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  ai-sim-03:
+    build: .
+    environment:
+      RUST_LOG: info
+    volumes:
+      - ./zresponse:/app/zresponse
+      - ./config.docker.yml:/app/config.yml
+    networks:
+      - ai-sim-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 1G
+
+  haproxy:
+    image: haproxy:latest
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "4545:4545"
+    networks:
+      - ai-sim-network
+    depends_on:
+      - ai-sim-01
+      - ai-sim-02
+      - ai-sim-03
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+
+networks:
+  ai-sim-network:
+    driver: bridge
+
+volumes:
+  redis_data:
