@@ -2,7 +2,15 @@
 
 A multi-dialect AI endpoint simulator built with Rust and actix-web. Simulates OpenAI, Anthropic, Ollama, Cohere, and Gemini streaming APIs with Redis-backed caching and configurable data sources (markdown files or ClickHouse database).
 
-Built primarily for benchmarking and development testing of [VIL (Vastar Intermediate Language)](https://github.com/OceanOS-id/VIL) — a process-oriented zero-copy framework for distributed systems. The simulator provides all 5 SSE dialect formats that VIL's `SseSourceDialect` supports, enabling end-to-end pipeline testing without real AI provider accounts.
+**Purpose: Benchmarking and overhead measurement.** This simulator provides a known-performance baseline (~8K req/s at c1000) so you can accurately measure the processing overhead of any application sitting in front of it. By comparing direct simulator throughput vs throughput through your application, you isolate exactly how much latency and cost your application adds.
+
+```
+Direct (baseline):   oha -c 200 -n 2000 http://localhost:4545/v1/chat/completions  → X req/s
+Via your app:        oha -c 200 -n 2000 http://localhost:3080/your-endpoint         → Y req/s
+Your app overhead:   (X - Y) / X × 100%
+```
+
+Built primarily for [VIL (Vastar Intermediate Language)](https://github.com/OceanOS-id/VIL) — a process-oriented zero-copy framework for distributed systems. The simulator provides all 5 SSE dialect formats that VIL's `SseSourceDialect` supports, enabling end-to-end pipeline testing without real AI provider accounts.
 
 While designed for VIL, the simulator is fully compatible with any OpenAI/Anthropic/Ollama/Cohere/Gemini client — use it as a drop-in mock for any application that consumes these APIs.
 
