@@ -13,6 +13,6 @@ tracking:
   enabled: false
 log_level: info
 channel_capacity: 1000
-semaphore_limit: 5000
-workers: 2
+semaphore_limit: 10000
+workers: 4
 cache_ttl: 60
