@@ -377,8 +377,21 @@ async fn main() -> Result<(), CustomError> {
         .filter(None, log_level)
         .init();
 
+    // Auto-free port if occupied
+    let port = CONFIG.binding.port;
+    if std::net::TcpListener::bind(("0.0.0.0", port)).is_err() {
+        eprintln!("Port {} in use — releasing...", port);
+        #[cfg(unix)]
+        {
+            let _ = std::process::Command::new("sh")
+                .args(["-c", &format!("kill $(lsof -ti:{}) 2>/dev/null", port)])
+                .output();
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
     println!("AI Endpoint Simulator: http://{}:{} (workers={}, log={})",
-        CONFIG.binding.host, CONFIG.binding.port, CONFIG.workers, CONFIG.log_level);
+        CONFIG.binding.host, port, CONFIG.workers, CONFIG.log_level);
 
     let app_state = Arc::new(AppState::new());
     let semaphore = Arc::new(Semaphore::new(CONFIG.semaphore_limit));
