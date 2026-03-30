@@ -377,16 +377,19 @@ async fn main() -> Result<(), CustomError> {
         .filter(None, log_level)
         .init();
 
-    info!("Starting server at http://{}:{}", CONFIG.binding.host, CONFIG.binding.port);
-    info!("Configuration: workers={}, semaphore_limit={}, cache_ttl={}s",
-          CONFIG.workers, CONFIG.semaphore_limit, CONFIG.cache_ttl);
+    println!("AI Endpoint Simulator: http://{}:{} (workers={}, log={})",
+        CONFIG.binding.host, CONFIG.binding.port, CONFIG.workers, CONFIG.log_level);
 
     let app_state = Arc::new(AppState::new());
     let semaphore = Arc::new(Semaphore::new(CONFIG.semaphore_limit));
 
     HttpServer::new(move || {
         App::new()
-            .wrap(Logger::default())
+            // Logger only when log_level is info or lower
+            .wrap(actix_web::middleware::Condition::new(
+                CONFIG.log_level == "info" || CONFIG.log_level == "debug" || CONFIG.log_level == "trace",
+                Logger::default(),
+            ))
             .app_data(web::Data::new(app_state.clone()))
             .app_data(web::Data::new(semaphore.clone()))
             .service(health_check)

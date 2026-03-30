@@ -33,7 +33,7 @@ impl Default for BindingConfig {
     }
 }
 
-fn default_log_level() -> String { "info".to_string() }
+fn default_log_level() -> String { "error".to_string() }
 fn default_channel_capacity() -> usize { 1000 }
 fn default_semaphore_limit() -> usize { 10000 }
 fn default_workers() -> usize { 4 }
@@ -43,7 +43,7 @@ const EMBEDDED_CONFIG: &str = r#"
 binding:
   port: 4545
   host: 0.0.0.0
-log_level: info
+log_level: error
 channel_capacity: 1000
 semaphore_limit: 10000
 workers: 4
