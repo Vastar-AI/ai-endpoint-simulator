@@ -23,7 +23,7 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates
 
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/ai-endpoint-simulator ./
-COPY config.yml ./
+COPY config.docker.yml ./config.yml
 COPY zresponse ./zresponse
 
 EXPOSE 4545
