@@ -98,10 +98,9 @@ async fn generate_chunks(tx: Sender<String>, input: &str) {
         let chunk_str = serde_json::to_string(&chunk).unwrap();
         let combined_chunk = format!("data: {}\n\n", chunk_str);
 
-        if let Err(e) = tx.send(combined_chunk.clone()).await {
-            error!("Failed to send chunk: {}. Error: {}", combined_chunk, e);
-        } else {
-            debug!("Sent chunk: {}", combined_chunk);
+        if let Err(_) = tx.send(combined_chunk.clone()).await {
+            // Client disconnected — normal during benchmarks
+            break;
         }
     }
 
