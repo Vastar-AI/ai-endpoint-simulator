@@ -182,15 +182,107 @@ async fn test_completion() -> HttpResponse {
     }))
 }
 
+/// OpenAI-compatible request body (partial — fields we care about)
+#[derive(Debug, Deserialize, Default)]
+struct OpenAiRequest {
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    messages: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    stream: Option<bool>,
+    #[serde(default)]
+    tools: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    max_tokens: Option<u64>,
+}
+
 #[actix_web::post("/v1/chat/completions")]
 async fn chat_completions(
     state: web::Data<Arc<AppState>>,
     semaphore: web::Data<Arc<Semaphore>>,
+    body: web::Json<OpenAiRequest>,
 ) -> Result<HttpResponse, CustomError> {
     let _permit = semaphore.acquire().await.map_err(|_| CustomError::FetchError)?;
 
-    info!("Received request for chat completions");
+    let model = body.model.clone().unwrap_or_else(|| "gpt-4o-2024-08-06".into());
+    let wants_stream = body.stream.unwrap_or(true);
+    let has_tools = body.tools.as_ref().map_or(false, |t| !t.is_empty());
 
+    info!(
+        "Chat completions: model={}, stream={}, tools={}",
+        model, wants_stream, has_tools
+    );
+
+    // ── Tool calls mode ──
+    if has_tools {
+        // Check if messages already contain tool results → agent is in follow-up turn
+        // In that case, return a text answer to end the ReAct loop
+        let has_tool_results = body.messages.as_ref().map_or(false, |msgs| {
+            msgs.iter().any(|m| m["role"] == "tool")
+        });
+
+        if has_tool_results {
+            // Agent already executed tools — return final text answer
+            let random_response = get_cached_file_response(&state, "zresponse").await?;
+            let content: String = random_response.chars().take(1000).collect();
+            let resp = serde_json::json!({
+                "id": generate_id(),
+                "object": "chat.completion",
+                "created": chrono::Utc::now().timestamp(),
+                "model": &model,
+                "choices": [{
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": content
+                    },
+                    "logprobs": null,
+                    "finish_reason": "stop"
+                }],
+                "usage": {
+                    "prompt_tokens": 200,
+                    "completion_tokens": content.split_whitespace().count(),
+                    "total_tokens": 200 + content.split_whitespace().count()
+                }
+            });
+            return Ok(HttpResponse::Ok().json(resp));
+        }
+
+        // First turn — return tool_calls
+        let tool_call = build_tool_call_response(&body, &model);
+        return Ok(HttpResponse::Ok().json(tool_call));
+    }
+
+    // ── Non-streaming mode: return single JSON response ──
+    if !wants_stream {
+        let random_response = get_cached_file_response(&state, "zresponse").await?;
+        // Truncate to reasonable length for non-streaming
+        let content: String = random_response.chars().take(2000).collect();
+        let resp = serde_json::json!({
+            "id": generate_id(),
+            "object": "chat.completion",
+            "created": chrono::Utc::now().timestamp(),
+            "model": &model,
+            "choices": [{
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": content
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+            }],
+            "usage": {
+                "prompt_tokens": 50,
+                "completion_tokens": content.split_whitespace().count(),
+                "total_tokens": 50 + content.split_whitespace().count()
+            }
+        });
+        return Ok(HttpResponse::Ok().json(resp));
+    }
+
+    // ── Streaming mode (default): SSE chunks ──
     let random_response = get_cached_file_response(&state, "zresponse").await?;
 
     let stream = openai_simulator(&random_response);
@@ -199,12 +291,13 @@ async fn chat_completions(
         Ok::<_, actix_web::Error>(web::Bytes::from(chunk))
     });
 
-    let final_stream = stream.chain(futures_util::stream::once(async {
+    let model_clone = model.clone();
+    let final_stream = stream.chain(futures_util::stream::once(async move {
         let final_chunk = Chunk {
             id: generate_id(),
             object: "chat.completion.chunk".to_string(),
             created: 1735278816,
-            model: "gpt-4o-2024-08-06".to_string(),
+            model: model_clone,
             system_fingerprint: "fp_d28bcae782".to_string(),
             choices: vec![],
             usage: Some(Usage {
@@ -237,6 +330,72 @@ async fn chat_completions(
     Ok(HttpResponse::Ok()
         .content_type("text/event-stream")
         .streaming(final_stream))
+}
+
+/// Build a tool_calls response when request contains tools.
+/// Extracts the first tool name and generates a mock invocation.
+fn build_tool_call_response(body: &OpenAiRequest, model: &str) -> serde_json::Value {
+    let tools = body.tools.as_ref().unwrap();
+    // Pick first tool that looks relevant
+    let tool = &tools[0];
+    let tool_name = tool["function"]["name"].as_str().unwrap_or("unknown");
+
+    // Extract user message to build relevant arguments
+    let user_msg = body.messages.as_ref()
+        .and_then(|msgs| msgs.iter().rev().find(|m| m["role"] == "user"))
+        .and_then(|m| m["content"].as_str())
+        .unwrap_or("query");
+
+    // Generate arguments based on tool name
+    let arguments = match tool_name {
+        "knowledge_base" | "search" => {
+            serde_json::json!({"query": user_msg}).to_string()
+        }
+        "system_status" => {
+            serde_json::json!({"service": "all"}).to_string()
+        }
+        "sla_calculator" => {
+            serde_json::json!({"priority": "P2"}).to_string()
+        }
+        "calculator" => {
+            serde_json::json!({"operation": "average", "values": [10.0, 20.0]}).to_string()
+        }
+        "fetch_products" => {
+            serde_json::json!({"category": "all"}).to_string()
+        }
+        _ => {
+            serde_json::json!({"input": user_msg}).to_string()
+        }
+    };
+
+    serde_json::json!({
+        "id": generate_id(),
+        "object": "chat.completion",
+        "created": chrono::Utc::now().timestamp(),
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "message": {
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [{
+                    "id": format!("call_{}", &generate_id()[9..]),
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": arguments
+                    }
+                }]
+            },
+            "logprobs": null,
+            "finish_reason": "tool_calls"
+        }],
+        "usage": {
+            "prompt_tokens": 100,
+            "completion_tokens": 20,
+            "total_tokens": 120
+        }
+    })
 }
 
 // =============================================================================
