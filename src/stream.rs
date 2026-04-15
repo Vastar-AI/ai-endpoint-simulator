@@ -3,7 +3,7 @@
 use futures_util::Stream;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio::sync::mpsc::{channel, Sender};
-use log::{info, debug, error};
+use log::info;
 use rand::Rng;
 use serde::Serialize;
 use chrono;

@@ -8,9 +8,9 @@ use std::time::Instant;
 use actix_web::{web, App, HttpResponse, HttpServer, middleware::Logger, ResponseError};
 use tokio::sync::Semaphore;
 use futures_util::StreamExt;
-use log::{info, debug, error, warn};
+use log::{info, debug, error};
 use derive_more::Display;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use dashmap::DashMap;
 use crate::response::read_random_markdown_file_async;
 use chrono;
@@ -23,8 +23,6 @@ use once_cell::sync::Lazy;
 enum CustomError {
     #[display(fmt = "Failed to fetch responses")]
     FetchError,
-    #[display(fmt = "Invalid source configuration")]
-    InvalidSource,
     #[display(fmt = "Failed to bind server: {}", _0)]
     BindError(String),
 }
@@ -194,6 +192,7 @@ struct OpenAiRequest {
     #[serde(default)]
     tools: Option<Vec<serde_json::Value>>,
     #[serde(default)]
+    #[allow(dead_code)]
     max_tokens: Option<u64>,
 }
 
